@@ -1,0 +1,202 @@
+Description: Create VPC with 2 Private and 2 public subnets in 2 AZs
+
+###################
+# Parameter Section
+###################
+
+ # Section for configuring commonly changed resource parameters that 
+ # are used by cloud resources so they can be easily updated to match 
+ # each scenario without going through the entire template
+ 
+#Parameters:
+
+##################
+# Resources Section
+##################
+
+Resources:
+
+ # The VPC is the network and overall IP Block that contains deployed 
+ # network resources such as EC2 instances, Subnets, Internet Gateways
+ # as well as some global settings for resources deployed in this VPC
+ # such as enabling DNS support and allowing EC2 instances to be 
+ # accessable via their hostname.
+
+  TVVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: MyVPC
+        - Key: Owner
+          Value: Kallen
+
+ # The Internet gateway provides internet access for cloud resources.
+ # This is achieved by using the internet gateway as a routing target
+ # for traffic you wish to send to the internet.
+
+  TVIGW:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: MyIGW
+
+ # Links internet gateway to a VPC so that it can be used as a 
+ # routing target for route tables in the VPC.
+
+  TVIGWVPCAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    DependsOn:
+      - TVVPC
+      - TVIGW
+    Properties:
+      InternetGatewayId: !Ref TVIGW
+      VpcId: !Ref TVVPC
+
+ # Creates a subnet with a designated CIDR block in 
+ # specific VPC and availability zone.
+
+  TVPubSubnet1:
+    Type: AWS::EC2::Subnet
+    DependsOn: TVVPC
+    Properties:
+      CidrBlock: 10.0.0.0/24
+      VpcId: !Ref TVVPC
+      AvailabilityZone: !Select
+        - 0
+        - !GetAZs
+          Ref: AWS::Region
+
+ # Creates another subnet with different 
+ # CIDR block and availiability zone.
+
+  TVPubSubnet2:
+    Type: AWS::EC2::Subnet
+    DependsOn: TVVPC
+    Properties:
+      CidrBlock: 10.0.1.0/24
+      VpcId: !Ref TVVPC
+      AvailabilityZone: !Select
+        - 1
+        - !GetAZs
+          Ref: AWS::Region
+
+ # Creates another 2 subnets in the same VPC with different 
+ # CIDR blocks and availability zones.
+
+  TVPrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    DependsOn: TVVPC
+    Properties:
+      CidrBlock: 10.0.2.0/24
+      VpcId: !Ref TVVPC
+      AvailabilityZone: !Select
+        - 0
+        - !GetAZs
+          Ref: AWS::Region
+
+  TVPrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    DependsOn: TVVPC
+    Properties:
+      CidrBlock: 10.0.3.0/24
+      VpcId: !Ref TVVPC
+      AvailabilityZone: !Select
+        - 1
+        - !GetAZs
+          Ref: AWS::Region
+
+ # Create route table and assign route table to a VPC.
+
+  TVRouteTable:
+    Type: AWS::EC2::RouteTable
+    DependsOn: TVVPC
+    Properties:
+      VpcId: !Ref TVVPC
+
+ # Creates default route to internet gateway and assigns
+ # route to a route table.
+
+  TVDefaultRoute:
+    Type: AWS::EC2::Route
+    DependsOn:
+      - TVRouteTable
+      - TVIGW
+    Properties:
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref TVIGW
+      RouteTableId: !Ref TVRouteTable
+
+ # Connects public route table containing IGW default route
+ # to subnets that are designed as public subnets to make
+ # subnet publically accessable
+
+  TVPubSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    DependsOn:
+      - TVRouteTable
+      - TVPubSubnet1
+    Properties:
+      RouteTableId: !Ref TVRouteTable
+      SubnetId: !Ref TVPubSubnet1
+
+  TVPubSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    DependsOn:
+      - TVRouteTable
+      - TVPubSubnet2
+    Properties:
+      RouteTableId: !Ref TVRouteTable
+      SubnetId: !Ref TVPubSubnet2
+
+ # Creates security group with rules for allowing
+ # SSH, HTTP and HTTPS traffic while denying all
+ # other traffic to resources that have been assigned
+ # this security group. 
+
+  TVSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    DependsOn: TVVPC
+    Properties:
+      GroupName: TVSG
+      GroupDescription: Enable SSH, HTTP, HTTPS
+      VpcId: !Ref TVVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+
+##################
+# Outputs section
+##################
+
+ # Defines important details that you wish to output from 
+ # cloudformation allowing them to be easily captured 
+ # and integrated with other cloud resources if required.
+
+Outputs:
+
+ # Outputs VPC ID of VPC with logical name of TVVPC
+
+  VPC:
+    Description: VPC ID
+    Value: !Ref TVVPC
+
+ # Outputs the ID of TVPubSubnet 1
+
+  PubSubnet1:
+    Description: Public Subnet 1 ID
+    Value: !Ref TVPubSubnet1
